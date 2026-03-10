@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Business for Sale Finder</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background:#0b1020; color:#e8ebf4; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    .panel { background:#141b34; border:1px solid #2b365f; border-radius:10px; padding:16px; margin-bottom:16px; }
+    input, select, button { padding: 10px; border-radius: 8px; border:1px solid #3a4676; background:#0f1630; color:#fff; }
+    button { cursor:pointer; background:#304ffe; border:none; }
+    button.secondary { background:#26335f; }
+    .grid { display:grid; grid-template-columns: repeat(5, minmax(120px,1fr)); gap:8px; }
+    table { width:100%; border-collapse: collapse; font-size:14px; }
+    th, td { border-bottom:1px solid #2b365f; text-align:left; padding:10px; }
+    .muted { color:#a7b0d3; }
+    .status { font-size:13px; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Business for Sale Finder</h1>
+    <p class="muted">Search listings, refresh sources, and inspect map points.</p>
+
+    <div class="panel">
+      <div class="grid">
+        <input id="q" placeholder="Keyword (e.g., gas station)" />
+        <input id="state" placeholder="State (e.g., IL)" />
+        <input id="category" placeholder="Category (e.g., gas_station)" />
+        <input id="maxPrice" type="number" placeholder="Max price" />
+        <div style="display:flex;gap:8px;">
+          <button onclick="search()">Search</button>
+          <button class="secondary" onclick="refreshData()">Refresh</button>
+        </div>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Listings</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th><th>Location</th><th>Category</th><th>Price</th><th>Contact</th><th>Map</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>Map data (GeoJSON preview)</h3>
+      <pre id="geo" style="white-space:pre-wrap"></pre>
+    </div>
+  </div>
+
+<script>
+  function setStatus(msg){ document.getElementById('status').textContent = msg; }
+
+  function queryString(){
+    const params = new URLSearchParams();
+    const q = document.getElementById('q').value.trim();
+    const state = document.getElementById('state').value.trim();
+    const category = document.getElementById('category').value.trim();
+    const maxPrice = document.getElementById('maxPrice').value.trim();
+    if(q) params.set('q', q);
+    if(state) params.set('state', state);
+    if(category) params.set('category', category);
+    if(maxPrice) params.set('max_price', maxPrice);
+    return params.toString();
+  }
+
+  async function refreshData(){
+    setStatus('Refreshing sources...');
+    const r = await fetch('/refresh', { method: 'POST' });
+    const data = await r.json();
+    setStatus(`Refresh done. fetched=${data.fetched} inserted=${data.inserted} updated=${data.updated}`);
+    await search();
+  }
+
+  async function search(){
+    const qs = queryString();
+    const r = await fetch(`/listings${qs ? '?' + qs : ''}`);
+    const data = await r.json();
+    const rows = document.getElementById('rows');
+    rows.innerHTML = '';
+    data.forEach(item => {
+      const tr = document.createElement('tr');
+      const mapLink = item.latitude && item.longitude
+        ? `<a href="https://www.google.com/maps?q=${item.latitude},${item.longitude}" target="_blank">Open</a>`
+        : '-';
+      tr.innerHTML = `
+        <td>${item.title}</td>
+        <td>${item.city || ''}, ${item.state || ''}</td>
+        <td>${item.category || '-'}</td>
+        <td>${item.asking_price ? '$' + item.asking_price.toLocaleString() : '-'}</td>
+        <td>${item.owner_phone || item.owner_email || '-'}</td>
+        <td>${mapLink}</td>`;
+      rows.appendChild(tr);
+    });
+    await loadMap();
+    setStatus(`Loaded ${data.length} listing(s).`);
+  }
+
+  async function loadMap(){
+    const r = await fetch('/map');
+    const geo = await r.json();
+    document.getElementById('geo').textContent = JSON.stringify(geo, null, 2);
+  }
+
+  search();
+</script>
+</body>
+</html>
